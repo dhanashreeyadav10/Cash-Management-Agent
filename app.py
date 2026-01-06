@@ -155,7 +155,7 @@ with col2:
         """
         <h2 style="margin-bottom:0;">Virtual CFO – Finance Intelligence Platform</h2>
         <p style="color:gray;">
-        Investor-grade insights • Risk intelligence • AI-driven explanations
+        Document-driven insights • Investor-grade analysis • AI CFO Assistant
         </p>
         """,
         unsafe_allow_html=True
@@ -171,116 +171,88 @@ uploaded_file = st.file_uploader(
     type=["csv", "pdf"]
 )
 
-data = None
-text_context = ""
+if "finance_context" not in st.session_state:
+    st.session_state.finance_context = ""
+
+if "dataframe" not in st.session_state:
+    st.session_state.dataframe = None
 
 if uploaded_file:
     file_type, content = load_uploaded_file(uploaded_file)
+
     if file_type == "table":
-        data = content
-        st.success("Financial data loaded")
-        st.dataframe(data.head())
+        st.session_state.dataframe = content
+        st.session_state.finance_context = content.head(200).to_string()
+        st.success("Structured financial data loaded")
+
     else:
-        text_context = content
-        st.success("Document loaded")
+        st.session_state.dataframe = None
+        st.session_state.finance_context = content
+        st.success("Financial document loaded and indexed")
 
 # -------------------------------------------------
 # TABS
 # -------------------------------------------------
 tab1, tab2, tab3, tab4 = st.tabs(
-    ["📊 Dashboard", "📈 Period Comparison", "🧠 AI CFO Chat", "📄 Reports"]
+    ["📊 Dashboard", "📊 Financial Analysis & Comparison", "🧠 AI CFO Chat", "📄 Reports"]
 )
 
 # =================================================
-# TAB 1: DASHBOARD
+# TAB 1: DASHBOARD (AUTO VISUAL)
 # =================================================
 with tab1:
-    if data is None:
-        st.info("Upload a financial CSV to view dashboard.")
+    if not st.session_state.finance_context:
+        st.info("Upload a financial file to view dashboard insights.")
     else:
-        st.subheader("📌 Key Financial KPIs")
+        st.subheader("📌 Key Financial Highlights")
 
-        def kpi_card(title, value, delta=None):
-            st.metric(title, value, delta)
+        # ---------- AI SUMMARY ----------
+        summary = call_llm(
+            "You are a CFO summarizing financial performance.",
+            f"Provide 5 concise bullet insights from this financial data:\n{st.session_state.finance_context[:4000]}"
+        )
 
-        c1, c2, c3, c4 = st.columns(4)
+        st.success(summary)
 
-        revenue = data["revenue"].sum() if "revenue" in data else None
-        expenses = data["expenses"].sum() if "expenses" in data else None
-        operating_income = revenue - expenses if revenue and expenses else None
+        # ---------- CSV VISUALS ----------
+        if st.session_state.dataframe is not None:
+            df = st.session_state.dataframe
 
-        with c1:
-            if revenue:
-                kpi_card("Revenue", f"₹ {revenue:,.0f}")
-        with c2:
-            if operating_income:
-                kpi_card("Operating Income", f"₹ {operating_income:,.0f}")
-        with c3:
-            if "debt" in data and "equity" in data:
-                de_ratio = data["debt"].sum() / data["equity"].sum()
-                kpi_card("Debt / Equity", f"{de_ratio:.2f}")
-        with c4:
-            if "cash_inflow" in data and "cash_outflow" in data:
-                net_cash = (data["cash_inflow"] - data["cash_outflow"]).sum()
-                kpi_card("Net Cash Flow", f"₹ {net_cash:,.0f}")
-
-        st.divider()
-        st.subheader("📉 Trends")
-
-        if "period" in data and "revenue" in data:
-            fig = px.line(
-                data,
-                x="period",
-                y="revenue",
-                title="Revenue Trend",
-                markers=True
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            numeric_cols = df.select_dtypes(include="number").columns.tolist()
+            if numeric_cols:
+                col = st.selectbox("Select metric to visualize", numeric_cols)
+                fig = px.line(df, y=col, title=f"{col} Trend")
+                st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
-# TAB 2: PERIOD COMPARISON
+# TAB 2: FULL FINANCIAL ANALYSIS
 # =================================================
 with tab2:
-    if data is None or "period" not in data:
-        st.info("Period comparison requires period-based data.")
+    if not st.session_state.finance_context:
+        st.info("Upload a financial file to run analysis.")
     else:
-        st.subheader("🆚 Compare Periods")
+        st.subheader("📊 Comprehensive Financial Analysis")
 
-        periods = data["period"].unique().tolist()
-        p1, p2 = st.columns(2)
+        analysis = call_llm(
+            "You are a senior financial analyst and CFO.",
+            f"""
+            Analyze the following financial data/document and provide:
+            - Income Statement insights
+            - Balance Sheet strength
+            - Cash Flow health
+            - Key risks (liquidity, leverage, margin, cash)
+            - Period comparison insights if available
+            Use professional, investor-ready language.
 
-        with p1:
-            old_period = st.selectbox("Select Base Period", periods)
-        with p2:
-            new_period = st.selectbox("Select Comparison Period", periods, index=len(periods)-1)
+            DATA:
+            {st.session_state.finance_context[:5000]}
+            """
+        )
 
-        old = data[data["period"] == old_period]
-        new = data[data["period"] == new_period]
-
-        if "operating_income" in data:
-            old_val = old["operating_income"].sum()
-            new_val = new["operating_income"].sum()
-            change = new_val - old_val
-            pct = (change / old_val) * 100 if old_val else 0
-
-            st.metric(
-                "Operating Income Change",
-                f"₹ {change:,.0f}",
-                f"{pct:.1f}%"
-            )
-
-            explanation = call_llm(
-                "You are a CFO explaining financial performance.",
-                f"""
-                Operating income changed from ₹{old_val} to ₹{new_val}.
-                Explain drivers and risks in simple investor language.
-                """
-            )
-
-            st.info(explanation)
+        st.write(analysis)
 
 # =================================================
-# TAB 3: AI CFO CHAT (WITH MEMORY)
+# TAB 3: AI CFO CHAT (FILE-GROUNDED)
 # =================================================
 with tab3:
     st.subheader("🧠 AI CFO Assistant")
@@ -288,14 +260,20 @@ with tab3:
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    user_q = st.chat_input("Ask anything about financial performance, risk, cash flow...")
+    user_q = st.chat_input("Ask questions based on the uploaded financial data")
 
     if user_q:
         st.session_state.chat_history.append({"role": "user", "content": user_q})
 
         response = call_llm(
-            "You are a seasoned CFO answering investor and management questions.",
-            f"Context:\n{text_context}\n\nQuestion:\n{user_q}"
+            "You are a Virtual CFO answering questions ONLY based on the provided financial data.",
+            f"""
+            FINANCIAL DATA:
+            {st.session_state.finance_context[:5000]}
+
+            QUESTION:
+            {user_q}
+            """
         )
 
         st.session_state.chat_history.append({"role": "assistant", "content": response})
@@ -308,12 +286,11 @@ with tab3:
 # TAB 4: REPORTS
 # =================================================
 with tab4:
-    st.subheader("📄 Download Board-Ready Reports")
+    st.subheader("📄 Board-Ready Reports")
 
-    if st.button("Generate Reports"):
+    if st.button("Generate Structured Reports"):
         insights = {
-            "Summary": "Automatically generated CFO insights",
-            "Risk": "Liquidity and leverage within acceptable range"
+            "Financial Analysis": st.session_state.finance_context[:2000]
         }
 
         pdf_path = generate_pdf_report(insights)

@@ -7,6 +7,31 @@ from orchestrator import run_finance_analysis
 from excel_report import generate_excel_report
 from pdf_report import generate_pdf_report
 
+
+# ---------- PAGE CONFIG ----------
+st.set_page_config(
+    page_title="Finance AI Agent",
+    layout="wide"
+)
+
+# ---------- HEADER WITH LOGO ----------
+col1, col2 = st.columns([1, 6])
+
+with col1:
+    st.image("compunnel_logo.jpg", width=120)
+
+with col2:
+    st.markdown(
+        """
+        <h2 style="margin-bottom:0;">💰 Finance AI Agent</h2>
+        <p style="color:gray;">Cash • AP • AR • Forecasting</p>
+        """,
+        unsafe_allow_html=True
+    )
+
+st.divider()
+
+
 st.set_page_config(page_title="Finance AI Agent", layout="wide")
 st.title("💰 Finance AI Agent")
 
@@ -47,3 +72,4 @@ if st.button("🚀 Run Finance Analysis") and uploaded_file:
 
         st.download_button("⬇ Download Excel", open(excel_path, "rb"))
         st.download_button("⬇ Download PDF", open(pdf_path, "rb"))
+

@@ -1,53 +1,3 @@
-# from ap_agent import ap_agent
-# from ar_agent import ar_agent
-# from cash_agent import cash_agent
-
-# def run_finance_agents(ap_df, ar_df, cash_df):
-#     return {
-#         "AP Insights": ap_agent(ap_df),
-#         "AR Insights": ar_agent(ar_df),
-#         "Cash Insights": cash_agent(cash_df)
-#     }
-
-
-# from ap_agent import ap_agent
-# from ar_agent import ar_agent
-# from cash_agent import cash_agent
-
-# def run_finance_agents(df=None, text=None):
-#     return {
-#         "AP Insights": ap_agent(df, text),
-#         "AR Insights": ar_agent(df, text),
-#         "Cash Insights": cash_agent(df, text),
-#     }
-
-
-# from ap_agent import ap_agent
-# from ar_agent import ar_agent
-# from cash_agent import cash_agent
-# from llm_client import call_llm
-
-# def run_finance_agents(data_type, data):
-#     if data_type == "structured":
-#         return {
-#             "AP Insights": ap_agent(data),
-#             "AR Insights": ar_agent(data),
-#             "Cash Insights": cash_agent(data),
-#         }
-
-#     # Unstructured (PDF / Image / Text)
-#     context = f"""
-# Financial document content:
-# {str(data)[:3000]}
-# """
-
-#     return {
-#         "Document Insights": call_llm(
-#             "You are a senior finance analyst.",
-#             context + "\nExtract risks, insights, and recommendations."
-#         )
-#     }
-
 
 from ap_agent import ap_agent
 from ar_agent import ar_agent
@@ -78,3 +28,4 @@ def run_finance_analysis(file_type, content):
                 f"Analyze this financial document and provide insights:\n{content[:4000]}"
             )
         }
+

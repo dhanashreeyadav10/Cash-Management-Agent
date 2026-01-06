@@ -1,4 +1,3 @@
-
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
@@ -11,4 +10,3 @@ def forecast_series(series, days=30):
 
     future_X = np.arange(len(y), len(y) + days).reshape(-1, 1)
     return model.predict(future_X)
-

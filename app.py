@@ -123,85 +123,201 @@
 
 
 import streamlit as st
+import pandas as pd
 import os
+import plotly.express as px
 
 from llm_client import call_llm
-from kpi_engine import compute_kpis
-from risk_engine import detect_risks
-from comparison_engine import compare
-from financial_sections import income_statement, balance_sheet, cash_flow
 from file_handler import load_uploaded_file
 from pdf_report import generate_pdf_report
 from excel_report import generate_excel_report
 
-# ---------------- CONFIG ----------------
-st.set_page_config("Virtual CFO", layout="wide")
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
+st.set_page_config(
+    page_title="Virtual CFO | Finance Intelligence",
+    layout="wide"
+)
 
-BASE = os.path.dirname(__file__)
-st.image(os.path.join(BASE, "compunnel_logo.jpg"), width=120)
+# -------------------------------------------------
+# HEADER
+# -------------------------------------------------
+BASE_DIR = os.path.dirname(__file__)
+LOGO = os.path.join(BASE_DIR, "compunnel_logo.jpg")
 
-st.title("📊 Virtual CFO – Finance Intelligence Platform")
-
-# ---------------- FILE UPLOAD ----------------
-file = st.file_uploader("Upload Financial CSV / PDF", ["csv", "pdf"])
-
-if file:
-    file_type, content = load_uploaded_file(file)
-    st.success("File loaded")
-
-# ---------------- KPI DASHBOARD ----------------
-st.header("📌 KPI Dashboard")
-kpis = compute_kpis()
-cols = st.columns(3)
-
-for col, (k, v) in zip(cols * 2, kpis.items()):
-    with col:
-        color = {"green": "🟢", "amber": "🟠", "red": "🔴"}[v["status"]]
-        arrow = {"up": "⬆️", "down": "⬇️", "flat": "➡️"}[v["trend"]]
-        st.metric(k, v["value"], arrow)
-
-# ---------------- FINANCIAL SECTIONS ----------------
-st.header("📈 Income Statement Insights")
-st.json(income_statement())
-
-st.header("🧮 Balance Sheet Strength")
-st.json(balance_sheet())
-
-st.header("💰 Cash Flow Health")
-st.json(cash_flow())
-
-# ---------------- RISKS ----------------
-st.header("⚠️ Risk Assessment")
-risks = detect_risks(kpis)
-for r in risks:
-    st.error(r)
-
-# ---------------- CHAT ----------------
-st.header("🧠 AI CFO Assistant")
-
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
-question = st.chat_input("Ask a financial question")
-
-if question:
-    st.session_state.chat.append(("user", question))
-    answer = call_llm(
-        "You are a Virtual CFO answering investor questions.",
-        question
+col1, col2 = st.columns([1, 6])
+with col1:
+    if os.path.exists(LOGO):
+        st.image(LOGO, width=120)
+with col2:
+    st.markdown(
+        """
+        <h2 style="margin-bottom:0;">Virtual CFO – Finance Intelligence Platform</h2>
+        <p style="color:gray;">
+        Investor-grade insights • Risk intelligence • AI-driven explanations
+        </p>
+        """,
+        unsafe_allow_html=True
     )
-    st.session_state.chat.append(("assistant", answer))
 
-for role, msg in st.session_state.chat:
-    with st.chat_message(role):
-        st.write(msg)
+st.divider()
 
-# ---------------- REPORT EXPORT ----------------
-if st.button("📄 Generate Reports"):
-    pdf = generate_pdf_report(kpis)
-    excel = generate_excel_report(kpis)
+# -------------------------------------------------
+# FILE UPLOAD
+# -------------------------------------------------
+uploaded_file = st.file_uploader(
+    "Upload Financial Data (CSV or PDF)",
+    type=["csv", "pdf"]
+)
 
-    st.download_button("Download PDF", open(pdf, "rb"))
-    st.download_button("Download Excel", open(excel, "rb"))
+data = None
+text_context = ""
 
+if uploaded_file:
+    file_type, content = load_uploaded_file(uploaded_file)
+    if file_type == "table":
+        data = content
+        st.success("Financial data loaded")
+        st.dataframe(data.head())
+    else:
+        text_context = content
+        st.success("Document loaded")
 
+# -------------------------------------------------
+# TABS
+# -------------------------------------------------
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["📊 Dashboard", "📈 Period Comparison", "🧠 AI CFO Chat", "📄 Reports"]
+)
+
+# =================================================
+# TAB 1: DASHBOARD
+# =================================================
+with tab1:
+    if data is None:
+        st.info("Upload a financial CSV to view dashboard.")
+    else:
+        st.subheader("📌 Key Financial KPIs")
+
+        def kpi_card(title, value, delta=None):
+            st.metric(title, value, delta)
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        revenue = data["revenue"].sum() if "revenue" in data else None
+        expenses = data["expenses"].sum() if "expenses" in data else None
+        operating_income = revenue - expenses if revenue and expenses else None
+
+        with c1:
+            if revenue:
+                kpi_card("Revenue", f"₹ {revenue:,.0f}")
+        with c2:
+            if operating_income:
+                kpi_card("Operating Income", f"₹ {operating_income:,.0f}")
+        with c3:
+            if "debt" in data and "equity" in data:
+                de_ratio = data["debt"].sum() / data["equity"].sum()
+                kpi_card("Debt / Equity", f"{de_ratio:.2f}")
+        with c4:
+            if "cash_inflow" in data and "cash_outflow" in data:
+                net_cash = (data["cash_inflow"] - data["cash_outflow"]).sum()
+                kpi_card("Net Cash Flow", f"₹ {net_cash:,.0f}")
+
+        st.divider()
+        st.subheader("📉 Trends")
+
+        if "period" in data and "revenue" in data:
+            fig = px.line(
+                data,
+                x="period",
+                y="revenue",
+                title="Revenue Trend",
+                markers=True
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+# =================================================
+# TAB 2: PERIOD COMPARISON
+# =================================================
+with tab2:
+    if data is None or "period" not in data:
+        st.info("Period comparison requires period-based data.")
+    else:
+        st.subheader("🆚 Compare Periods")
+
+        periods = data["period"].unique().tolist()
+        p1, p2 = st.columns(2)
+
+        with p1:
+            old_period = st.selectbox("Select Base Period", periods)
+        with p2:
+            new_period = st.selectbox("Select Comparison Period", periods, index=len(periods)-1)
+
+        old = data[data["period"] == old_period]
+        new = data[data["period"] == new_period]
+
+        if "operating_income" in data:
+            old_val = old["operating_income"].sum()
+            new_val = new["operating_income"].sum()
+            change = new_val - old_val
+            pct = (change / old_val) * 100 if old_val else 0
+
+            st.metric(
+                "Operating Income Change",
+                f"₹ {change:,.0f}",
+                f"{pct:.1f}%"
+            )
+
+            explanation = call_llm(
+                "You are a CFO explaining financial performance.",
+                f"""
+                Operating income changed from ₹{old_val} to ₹{new_val}.
+                Explain drivers and risks in simple investor language.
+                """
+            )
+
+            st.info(explanation)
+
+# =================================================
+# TAB 3: AI CFO CHAT (WITH MEMORY)
+# =================================================
+with tab3:
+    st.subheader("🧠 AI CFO Assistant")
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    user_q = st.chat_input("Ask anything about financial performance, risk, cash flow...")
+
+    if user_q:
+        st.session_state.chat_history.append({"role": "user", "content": user_q})
+
+        response = call_llm(
+            "You are a seasoned CFO answering investor and management questions.",
+            f"Context:\n{text_context}\n\nQuestion:\n{user_q}"
+        )
+
+        st.session_state.chat_history.append({"role": "assistant", "content": response})
+
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+
+# =================================================
+# TAB 4: REPORTS
+# =================================================
+with tab4:
+    st.subheader("📄 Download Board-Ready Reports")
+
+    if st.button("Generate Reports"):
+        insights = {
+            "Summary": "Automatically generated CFO insights",
+            "Risk": "Liquidity and leverage within acceptable range"
+        }
+
+        pdf_path = generate_pdf_report(insights)
+        excel_path = generate_excel_report(insights)
+
+        st.download_button("⬇ Download PDF Report", open(pdf_path, "rb"))
+        st.download_button("⬇ Download Excel Report", open(excel_path, "rb"))

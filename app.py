@@ -6,6 +6,18 @@ from file_handler import load_uploaded_file
 from orchestrator import run_finance_analysis
 from excel_report import generate_excel_report
 from pdf_report import generate_pdf_report
+import os
+
+for k in [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+]:
+    os.environ.pop(k, None)
+
 
 st.set_page_config(page_title="Finance AI Agent", layout="wide")
 st.title("💰 Finance AI Agent")
@@ -61,4 +73,5 @@ if st.button("🚀 Run Finance Analysis") and uploaded_file:
 
     st.download_button("⬇ Download Excel Report", open(excel_path,"rb"), "Finance_Report.xlsx")
     st.download_button("⬇ Download PDF Report", open(pdf_path,"rb"), "Finance_Report.pdf")
+
 

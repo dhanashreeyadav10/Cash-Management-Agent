@@ -32,22 +32,33 @@ if uploaded_file:
         st.error("File processing failed")
         st.code(traceback.format_exc())
 
+# if st.button("🚀 Run Finance Analysis") and uploaded_file:
+#     insights = run_finance_analysis(file_type, content)
+
+#     for k, v in insights.items():
+#         st.subheader(k)
+#         st.write(v)
+
+#     # Reports
+#     excel_path = generate_excel_report(
+#         content if file_type=="table" else pd.DataFrame(),
+#         pd.DataFrame(),
+#         pd.DataFrame(),
+#         insights
+#     )
+
+#     pdf_path = generate_pdf_report(insights)
 if st.button("🚀 Run Finance Analysis") and uploaded_file:
     insights = run_finance_analysis(file_type, content)
 
-    for k, v in insights.items():
-        st.subheader(k)
-        st.write(v)
+    if not insights:
+        st.warning("⚠ No finance insights could be generated from this file.")
+    else:
+        for k, v in insights.items():
+            st.subheader(k)
+            st.write(v)
 
-    # Reports
-    excel_path = generate_excel_report(
-        content if file_type=="table" else pd.DataFrame(),
-        pd.DataFrame(),
-        pd.DataFrame(),
-        insights
-    )
-
-    pdf_path = generate_pdf_report(insights)
 
     st.download_button("⬇ Download Excel Report", open(excel_path,"rb"), "Finance_Report.xlsx")
     st.download_button("⬇ Download PDF Report", open(pdf_path,"rb"), "Finance_Report.pdf")
+

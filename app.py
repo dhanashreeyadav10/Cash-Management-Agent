@@ -6,308 +6,135 @@ import plotly.express as px
 from file_handler import load_uploaded_file
 from pdf_time_parser import extract_periods
 from financial_signal_extractor import extract_financial_signals
-from dashboard_components import metric_card
+from ui_components import metric_card
 from llm_client import call_llm
 
-# ------------------------------------------------
-# PAGE CONFIG
-# ------------------------------------------------
-st.set_page_config(
-    page_title="Virtual CFO | Finance Intelligence",
-    layout="wide"
-)
+# ---------------- PAGE ----------------
+st.set_page_config("Virtual CFO", layout="wide")
 
-# ------------------------------------------------
-# HEADER
-# ------------------------------------------------
-BASE_DIR = os.path.dirname(__file__)
-LOGO = os.path.join(BASE_DIR, "compunnel_logo.jpg")
+BASE = os.path.dirname(__file__)
+st.image(os.path.join(BASE, "compunnel_logo.jpg"), width=120)
+st.title("📊 Virtual CFO – Financial Intelligence")
 
-col1, col2 = st.columns([1, 6])
-with col1:
-    if os.path.exists(LOGO):
-        st.image(LOGO, width=120)
+# ---------------- STATE INIT ----------------
+DEFAULT_METRICS = {
+    "Revenue": None,
+    "EBITDA": None,
+    "Net Profit": None,
+    "Total Assets": None,
+    "Total Liabilities": None,
+    "Cash & Cash Equivalents": None,
+    "Operating Cash Flow": None
+}
 
-with col2:
-    st.markdown(
-        """
-        <h2 style="margin-bottom:0;">Virtual CFO – Finance Intelligence</h2>
-        <p style="color:gray;">
-        Upload → Analyse → Visualize → Ask
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
-
-st.divider()
-
-# ------------------------------------------------
-# SESSION STATE INITIALIZATION
-# ------------------------------------------------
-for key in [
-    "file_loaded",
-    "analysis_done",
-    "finance_context",
-    "metrics",
-    "periods",
-    "chat_history"
-]:
+for key, default in {
+    "analysis_done": False,
+    "finance_context": "",
+    "metrics": DEFAULT_METRICS.copy(),
+    "periods": [],
+    "chat_history": []
+}.items():
     if key not in st.session_state:
-        st.session_state[key] = None if key != "chat_history" else []
+        st.session_state[key] = default
 
-# ------------------------------------------------
-# FILE UPLOAD
-# ------------------------------------------------
-uploaded_file = st.file_uploader(
-    "Upload Financial Data (CSV or PDF)",
-    type=["csv", "pdf"]
-)
+# ---------------- UPLOAD ----------------
+uploaded_file = st.file_uploader("Upload Financial CSV or PDF", ["csv", "pdf"])
 
-# ------------------------------------------------
-# ANALYSE BUTTON (MASTER CONTROL)
-# ------------------------------------------------
-analyse_clicked = st.button("▶ Analyse", type="primary")
-
-if analyse_clicked:
+# ---------------- ANALYSE BUTTON ----------------
+if st.button("▶ Analyse", type="primary"):
     if not uploaded_file:
-        st.warning("Please upload a financial file before clicking Analyse.")
+        st.warning("Please upload a file first.")
     else:
         with st.spinner("Analysing financial data..."):
             file_type, content = load_uploaded_file(uploaded_file)
 
-            # Store context
-            if isinstance(content, pd.DataFrame):
-                st.session_state.finance_context = content.to_string()
-            else:
-                st.session_state.finance_context = content
+            st.session_state.finance_context = (
+                content.to_string() if isinstance(content, pd.DataFrame) else content
+            )
 
-            # Extract periods
             st.session_state.periods = extract_periods(
                 st.session_state.finance_context
             )
 
-            # Extract metrics
-            raw_metrics = extract_financial_signals(
+            raw = extract_financial_signals(
                 st.session_state.finance_context
             )
 
-            # Safe JSON parsing
-            try:
-                st.session_state.metrics = json.loads(raw_metrics)
-            except Exception:
-                match = re.search(r"\{.*\}", raw_metrics, re.S)
-                st.session_state.metrics = (
-                    json.loads(match.group()) if match else {}
-                )
+            def safe_parse(raw_text):
+                try:
+                    parsed = json.loads(raw_text)
+                    return parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    match = re.search(r"\{.*\}", raw_text, re.S)
+                    if match:
+                        try:
+                            return json.loads(match.group())
+                        except Exception:
+                            pass
+                return {}
 
+            parsed = safe_parse(raw)
+
+            final = DEFAULT_METRICS.copy()
+            final.update(parsed)
+
+            st.session_state.metrics = final
             st.session_state.analysis_done = True
-            st.success("Analysis completed successfully")
 
-# ------------------------------------------------
-# PANELS (ONLY AFTER ANALYSIS)
-# ------------------------------------------------
+        st.success("Analysis completed")
+
+# ---------------- PANELS ----------------
 if st.session_state.analysis_done:
 
-    dashboard_tab, analysis_tab, chat_tab = st.tabs(
+    dashboard, analysis, chat = st.tabs(
         ["📊 Dashboard", "📈 Analysis & Prediction", "🧠 AI CFO Chat"]
     )
 
-    # ==================================================
-    # DASHBOARD PANEL
-    # ==================================================
-    with dashboard_tab:
-        st.subheader("📊 Financial Dashboard")
+    # ===== DASHBOARD =====
+    with dashboard:
+        st.subheader("Executive Dashboard")
 
         if st.session_state.periods:
-            st.caption(
-                f"📅 Detected periods: {', '.join(st.session_state.periods)}"
-            )
+            st.caption(f"📅 Detected periods: {', '.join(st.session_state.periods)}")
 
-        metrics = st.session_state.metrics or {}
+        m = st.session_state.metrics
 
         c1, c2, c3, c4 = st.columns(4)
-        metric_card("Revenue", metrics.get("Revenue"))
-        metric_card("EBITDA", metrics.get("EBITDA"))
-        metric_card("Net Profit", metrics.get("Net Profit"))
-        metric_card(
-            "Cash Balance",
-            metrics.get("Cash & Cash Equivalents")
-        )
+        metric_card("Revenue", m.get("Revenue"), "green", "📈")
+        metric_card("EBITDA", m.get("EBITDA"), "green", "💹")
+        metric_card("Net Profit", m.get("Net Profit"), "amber", "🏦")
+        metric_card("Cash Balance", m.get("Cash & Cash Equivalents"), "green", "💰")
 
-        numeric_metrics = {
-            k: v for k, v in metrics.items()
-            if isinstance(v, (int, float))
-        }
-
-        if numeric_metrics:
-            df_plot = pd.DataFrame(
-                numeric_metrics.items(),
-                columns=["Metric", "Value"]
-            )
-
-            fig = px.bar(
-                df_plot,
-                x="Metric",
-                y="Value",
-                title="Key Financial Metrics Overview",
-                text_auto=True
-            )
-
+        numeric = {k: v for k, v in m.items() if isinstance(v, (int, float))}
+        if numeric:
+            df = pd.DataFrame(numeric.items(), columns=["Metric", "Value"])
+            fig = px.bar(df, x="Metric", y="Value", title="Key Financial Metrics")
             st.plotly_chart(fig, use_container_width=True)
 
-    # ==================================================
-    # ANALYSIS / PREDICTION PANEL
-    # ==================================================
-    with analysis_tab:
-        st.subheader("📈 Financial Analysis & Risk Assessment")
+    # ===== ANALYSIS =====
+    with analysis:
+        st.subheader("Financial Analysis & Risks")
 
         analysis_text = call_llm(
-            "You are a senior financial analyst and CFO.",
-            f"""
-            Using the following financial data, provide:
-            - Income Statement analysis
-            - Balance Sheet strength
-            - Cash Flow health
-            - Key financial risks
-            - Forward-looking observations
-
-            DATA:
-            {st.session_state.finance_context[:5000]}
-            """
+            "You are a CFO providing investor-grade analysis.",
+            st.session_state.finance_context[:5000]
         )
-
         st.write(analysis_text)
 
-    # ==================================================
-    # AI CFO CHAT PANEL
-    # ==================================================
-    with chat_tab:
-        st.subheader("🧠 AI CFO Assistant")
+    # ===== CHAT =====
+    with chat:
+        st.subheader("AI CFO Assistant")
 
-        user_q = st.chat_input(
-            "Ask questions based on the analysed financial data"
-        )
+        q = st.chat_input("Ask questions about the analysed financial data")
 
-        if user_q:
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_q}
+        if q:
+            st.session_state.chat_history.append(("user", q))
+            a = call_llm(
+                "You are a CFO answering ONLY using the analysed data.",
+                f"{st.session_state.finance_context[:5000]}\n\nQuestion: {q}"
             )
+            st.session_state.chat_history.append(("assistant", a))
 
-            answer = call_llm(
-                "You are a Virtual CFO answering questions ONLY using the analysed financial data.",
-                f"""
-                FINANCIAL DATA:
-                {st.session_state.finance_context[:5000]}
-
-                QUESTION:
-                {user_q}
-                """
-            )
-
-            st.session_state.chat_history.append(
-                {"role": "assistant", "content": answer}
-            )
-
-        for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
-
-
-# --- inside app.py after Analyse is completed ---
-
-from ui_components import metric_card, sparkline
-from kpi_engine import compute_kpis
-from comparison_engine import compare_periods
-
-dashboard, income, balance, cashflow, kpi_tab, compare_tab, chat_tab = st.tabs(
-    [
-        "📊 Executive Dashboard",
-        "📈 Income Statement",
-        "🧮 Balance Sheet",
-        "💰 Cash Flow",
-        "📊 KPI & Ratios",
-        "🔄 Period Comparison",
-        "🧠 AI CFO Assistant"
-    ]
-)
-
-# ================= EXECUTIVE DASHBOARD =================
-with dashboard:
-    st.subheader("Executive Snapshot")
-
-    c1, c2, c3, c4 = st.columns(4)
-    metric_card("Revenue", "₹119,575 Cr", "↑ YoY", "green", "📈")
-    metric_card("EBITDA", "₹40,820 Cr", "↑ Margin Expansion", "green", "💹")
-    metric_card("Net Profit", "₹33,916 Cr", "Stable", "amber", "🏦")
-    metric_card("Cash Balance", "₹40,760 Cr", "Strong Liquidity", "green", "💰")
-
-# ================= INCOME STATEMENT =================
-with income:
-    st.subheader("Income Statement Insights")
-
-    c1, c2, c3 = st.columns(3)
-    metric_card("Revenue Growth", "↑ 8.4% YoY", status="green", icon="📈")
-    metric_card("Margin Trend", "↑ 120 bps", status="green", icon="📊")
-    metric_card("Expense Efficiency", "82 / 100", status="amber", icon="⚙️")
-
-    sparkline([100, 108, 115, 119])
-
-# ================= BALANCE SHEET =================
-with balance:
-    st.subheader("Balance Sheet Strength")
-
-    c1, c2, c3 = st.columns(3)
-    metric_card("Current Ratio", "1.4x", status="amber", icon="🧮")
-    metric_card("Debt / Equity", "0.79x", status="green", icon="🏦")
-    metric_card("Asset Quality", "No Red Flags", status="green", icon="🛡️")
-
-# ================= CASH FLOW =================
-with cashflow:
-    st.subheader("Cash Flow Health")
-
-    c1, c2, c3 = st.columns(3)
-    metric_card("Operating Cash Flow", "Healthy", status="green", icon="💰")
-    metric_card("Free Cash Flow", "Positive Trend", status="green", icon="📊")
-    metric_card("Cash Burn", "No Concern", status="green", icon="🔥")
-
-# ================= KPI & RATIOS =================
-with kpi_tab:
-    st.subheader("Investor-Grade KPI Dashboard")
-
-    kpis = compute_kpis(st.session_state.metrics)
-    cols = st.columns(3)
-
-    for col, (kpi, (val, status)) in zip(cols * 3, kpis.items()):
-        with col:
-            metric_card(kpi, f"{val:.2f}", status=status)
-
-# ================= PERIOD COMPARISON =================
-with compare_tab:
-    st.subheader("Period Comparison Engine")
-
-    diff, pct, summary = compare_periods(
-        old=70100,
-        new=74248,
-        label="Operating Income"
-    )
-
-    st.metric("Operating Income Change", f"₹{diff:,.0f}", f"{pct:.1f}%")
-    st.info(summary)
-
-# ================= AI CFO CHAT =================
-with chat_tab:
-    st.subheader("AI CFO Assistant")
-
-    q = st.chat_input("Ask questions like a board member or investor")
-
-    if q:
-        st.session_state.chat_history.append(("user", q))
-        a = call_llm(
-            "You are a Virtual CFO. Answer professionally using the analysed data.",
-            q
-        )
-        st.session_state.chat_history.append(("assistant", a))
-
-    for role, msg in st.session_state.chat_history:
-        with st.chat_message(role):
-            st.write(msg)
+        for role, msg in st.session_state.chat_history:
+            with st.chat_message(role):
+                st.write(msg)

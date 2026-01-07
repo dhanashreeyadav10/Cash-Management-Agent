@@ -45,7 +45,7 @@ def call_llm(system_prompt, user_prompt):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.2,
+        "temperature": 0.1,
         "max_tokens": 900
     }
 

@@ -1,6 +1,6 @@
 import re
 
-def extract_periods(text: str):
+def extract_periods(text):
     patterns = [
         r"Q[1-4]\s*FY\s*\d{2,4}",
         r"FY\s*\d{2,4}",
@@ -10,8 +10,7 @@ def extract_periods(text: str):
 
     found = set()
     for p in patterns:
-        matches = re.findall(p, text, flags=re.IGNORECASE)
-        for m in matches:
+        for m in re.findall(p, text, re.IGNORECASE):
             found.add(m.strip())
 
     return sorted(found)

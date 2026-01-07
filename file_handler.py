@@ -20,11 +20,13 @@ def load_uploaded_file(file):
     name = file.name.lower()
 
     if name.endswith(".csv"):
-        return "table", pd.read_csv(file)
+        df = pd.read_csv(file)
+        return "table", df
 
     if name.endswith(".pdf"):
         return "text", extract_pdf_text(file)
 
     raise ValueError("Unsupported format")
+
 
 

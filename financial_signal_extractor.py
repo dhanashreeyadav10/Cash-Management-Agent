@@ -2,7 +2,7 @@ from llm_client import call_llm
 
 def extract_financial_signals(text):
     prompt = f"""
-Return ONLY valid JSON. No explanations. No comments.
+Return ONLY valid JSON. No explanations.
 
 Schema:
 {{
